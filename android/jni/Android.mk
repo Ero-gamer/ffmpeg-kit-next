@@ -61,7 +61,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 $(call import-module, cpu-features)
 
-MY_SRC_FILES := ffmpegkit.c ffprobekit.c ffmpegkit_exception.c fftools/cmdutils.c fftools/ffmpeg.c fftools/ffprobe.c fftools/ffmpeg_mux.c fftools/ffmpeg_mux_init.c fftools/ffmpeg_demux.c fftools/ffmpeg_filter.c fftools/ffmpeg_hw.c fftools/ffmpeg_opt.c fftools/ffmpeg_enc.c fftools/ffmpeg_dec.c fftools/ffmpeg_mux_utils.c fftools/objpool.c fftools/sync_queue.c fftools/thread_queue.c fftools/textformat/tw_buffer.c fftools/textformat/tw_log.c fftools/textformat/tw_print.c fftools/textformat/tw_stdout.c
+MY_SRC_FILES := ffmpegkit.c ffprobekit.c ffmpegkit_exception.c fftools/cmdutils.c fftools/ffmpeg.c fftools/ffprobe.c fftools/ffmpeg_mux.c fftools/ffmpeg_mux_init.c fftools/ffmpeg_demux.c fftools/ffmpeg_filter.c fftools/ffmpeg_hw.c fftools/ffmpeg_opt.c fftools/ffmpeg_enc.c fftools/ffmpeg_dec.c fftools/objpool.c fftools/sync_queue.c fftools/thread_queue.c fftools/textformat/tw_buffer.c fftools/textformat/tw_log.c fftools/textformat/tw_print.c fftools/textformat/tw_stdout.c
 
 MY_CFLAGS := -Wall -Werror -Wno-unused-parameter -fPIC -Wno-switch -Wno-sign-compare $(FFMPEG_KIT_PACKAGE_NAME_CFLAG)
 MY_LDLIBS := -llog -lz -landroid
