@@ -105,3 +105,14 @@ ifeq ($(MY_BUILD_GENERIC_FFMPEG_KIT), true)
 
     $(call import-module, ffmpeg)
 endif
+
+# Add these include paths for FFmpeg headers
+LOCAL_C_INCLUDES := \
+    $(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_BUILD_PATH)/ffmpeg/include \
+    $(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_NEON_BUILD_PATH)/ffmpeg/include
+
+# Link against FFmpeg libraries
+LOCAL_LDLIBS := \
+    -L$(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_BUILD_PATH)/ffmpeg/lib \
+    -L$(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_NEON_BUILD_PATH)/ffmpeg/lib \
+    -lavutil -lavformat -lavcodec -lswscale -lswresample -lavfilter -lavdevice
