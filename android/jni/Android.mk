@@ -61,7 +61,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 $(call import-module, cpu-features)
 
-MY_SRC_FILES := ffmpegkit.c ffprobekit.c ffmpegkit_exception.c fftools/cmdutils.c fftools/ffmpeg.c fftools/ffprobe.c fftools/ffmpeg_mux.c fftools/ffmpeg_mux_init.c fftools/ffmpeg_demux.c fftools/ffmpeg_enc.c fftools/ffmpeg_dec.c fftools/ffmpeg_opt.c fftools/ffmpeg_sched.c fftools/opt_common.c fftools/ffmpeg_hw.c fftools/ffmpeg_filter.c fftools/graph/graphprint.c fftools/resources/graph_resources.c fftools/resources/resman.c fftools/textformat/avtextformat.c fftools/textformat/tf_compact.c fftools/textformat/tf_default.c fftools/textformat/tf_flat.c fftools/textformat/tf_ini.c fftools/textformat/tf_json.c fftools/textformat/tf_mermaid.c fftools/textformat/tf_xml.c fftools/sync_queue.c fftools/thread_queue.c fftools/textformat/tw_avio.c fftools/textformat/tw_buffer.c fftools/textformat/tw_stdout.c android_support.c ffmpeg_context.c compat/android/binder.c
+MY_SRC_FILES := ffmpegkit.c ffprobekit.c ffmpegkit_exception.c fftools/cmdutils.c fftools/ffmpeg.c fftools/ffprobe.c fftools/ffmpeg_mux.c fftools/ffmpeg_mux_init.c fftools/ffmpeg_demux.c fftools/ffmpeg_filter.c fftools/ffmpeg_hw.c fftools/ffmpeg_opt.c fftools/ffmpeg_enc.c fftools/ffmpeg_dec.c fftools/ffmpeg_mux_utils.c fftools/objpool.c fftools/sync_queue.c fftools/thread_queue.c fftools/textformat/tw_buffer.c fftools/textformat/tw_log.c fftools/textformat/tw_print.c fftools/textformat/tw_stdout.c
 
 MY_CFLAGS := -Wall -Werror -Wno-unused-parameter -fPIC -Wno-switch -Wno-sign-compare $(FFMPEG_KIT_PACKAGE_NAME_CFLAG)
 MY_LDLIBS := -llog -lz -landroid
@@ -74,7 +74,7 @@ ifeq ($(MY_ARMV7_NEON), true)
     LOCAL_ARM_MODE := $(MY_ARM_MODE)
     LOCAL_MODULE := ffmpegkit_armv7a_neon
     LOCAL_SRC_FILES := $(MY_SRC_FILES)
-    LOCAL_C_INCLUDES := $(LOCAL_PATH)
+    LOCAL_C_INCLUDES := $(LOCAL_PATH) $(FFMPEG_INCLUDES)
     LOCAL_CFLAGS := $(MY_CFLAGS)
     LOCAL_LDFLAGS := $(MY_LDFLAGS)
     LOCAL_LDLIBS := $(MY_LDLIBS)
@@ -95,7 +95,7 @@ ifeq ($(MY_BUILD_GENERIC_FFMPEG_KIT), true)
     LOCAL_ARM_MODE := $(MY_ARM_MODE)
     LOCAL_MODULE := ffmpegkit
     LOCAL_SRC_FILES := $(MY_SRC_FILES)
-    LOCAL_C_INCLUDES := $(LOCAL_PATH)
+    LOCAL_C_INCLUDES := $(LOCAL_PATH) $(FFMPEG_INCLUDES)
     LOCAL_CFLAGS := $(MY_CFLAGS)
     LOCAL_LDFLAGS := $(MY_LDFLAGS)
     LOCAL_LDLIBS := $(MY_LDLIBS)
@@ -105,14 +105,3 @@ ifeq ($(MY_BUILD_GENERIC_FFMPEG_KIT), true)
 
     $(call import-module, ffmpeg)
 endif
-
-# Add these include paths for FFmpeg headers
-LOCAL_C_INCLUDES := \
-    $(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_BUILD_PATH)/ffmpeg/include \
-    $(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_NEON_BUILD_PATH)/ffmpeg/include
-
-# Link against FFmpeg libraries
-LOCAL_LDLIBS := \
-    -L$(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_BUILD_PATH)/ffmpeg/lib \
-    -L$(FFMPEG_KIT_ROOT)/prebuilt/$(ARMV7_NEON_BUILD_PATH)/ffmpeg/lib \
-    -lavutil -lavformat -lavcodec -lswscale -lswresample -lavfilter -lavdevice
