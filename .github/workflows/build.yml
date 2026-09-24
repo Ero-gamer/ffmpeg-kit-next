@@ -42,11 +42,11 @@ jobs:
         run: |
           mkdir -p "$ANDROID_SDK_ROOT/licenses"
           printf "893378d70df107b41acc80974419079954e7075a\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a6378b744f05473f20bb4f32402140291\n" > "$ANDROID_SDK_ROOT/licenses/android-sdk-license"
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          echo y | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Install NDK r27d
         run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+          echo y | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
       - name: Install build dependencies
