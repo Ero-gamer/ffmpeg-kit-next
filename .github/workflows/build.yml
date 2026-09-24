@@ -38,10 +38,14 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Pre-accept Android SDK Licenses
+        run: |
+          mkdir -p "$ANDROID_SDK_ROOT/licenses"
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
       - name: Install Android SDK
         uses: android-actions/setup-android@v4.0.1
 
-      # Pipe 'yes' to accept all licenses non-interactively
       - name: Install NDK r27d
         run: |
           yes | sdkmanager --licenses
@@ -215,7 +219,6 @@ jobs:
           CPU_OUT="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_BUILD_PATH }}/cpu-features"
           mkdir -p "$CPU_OUT/lib" "$CPU_OUT/include/ndk_compat" /tmp/cpufeatures
 
-          # Download modern replacement sources from AOSP android/ndk repository
           curl -sSL "https://android.googlesource.com/platform/ndk/+/refs/heads/main/sources/android/cpufeatures/cpu-features.c?format=TEXT" | base64 -d > /tmp/cpufeatures/cpu-features.c
           curl -sSL "https://android.googlesource.com/platform/ndk/+/refs/heads/main/sources/android/cpufeatures/cpu-features.h?format=TEXT" | base64 -d > /tmp/cpufeatures/cpu-features.h
 
