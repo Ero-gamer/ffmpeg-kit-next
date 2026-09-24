@@ -9,19 +9,17 @@ on:
 
 env:
   FFMPEG_VERSION: "9.0.1"
-  NDK_VERSION: "27.2.12479018"         # r27d
+  NDK_VERSION: "27.2.12479018"
   ANDROID_API: "24"
   ABI: "armeabi-v7a"
   ARMV7_BUILD_PATH: "android-24-arm-v7a"
   ARMV7_NEON_BUILD_PATH: "android-24-arm-v7a-neon"
   OPT_CFLAGS: >-
     -O3 -ffast-math -ftree-vectorize
-    -mfloat-abi=softfp -mfpu=neon-vfpv4
-    -march=armv7-a -fPIC
+    -mfpu=neon-vfpv4 -march=armv7-a -fPIC
   NEON_CFLAGS: >-
     -O3 -ffast-math -ftree-vectorize
-    -mfloat-abi=softfp -mfpu=neon-vfpv4
-    -march=armv7-a -fPIC -marm
+    -mfpu=neon-vfpv4 -march=armv7-a -fPIC -marm
 
 jobs:
   build-ffmpegkit-android:
@@ -31,25 +29,24 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
+        with:
+          submodules: true
 
       - name: Set up Java 17
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Pre-accept Android SDK Licenses
+      - name: Accept Android SDK & NDK Licenses
         run: |
           mkdir -p "$ANDROID_SDK_ROOT/licenses"
+          printf "893378d70df107b41acc80974419079954e7075a\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a6378b744f05473f20bb4f32402140291\n" > "$ANDROID_SDK_ROOT/licenses/android-sdk-license"
           yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
-      - name: Install Android SDK
-        uses: android-actions/setup-android@v4.0.1
 
       - name: Install NDK r27d
         run: |
-          yes | sdkmanager --licenses
-          yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
       - name: Install build dependencies
@@ -60,12 +57,12 @@ jobs:
             cmake git curl ca-certificates libssl-dev python3
 
       - name: Cache FFmpeg tarball
-        uses: actions/cache@v6.1.0
+        uses: actions/cache@v4
         with:
           path: ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2
           key: ffmpeg-tarball-${{ env.FFMPEG_VERSION }}
 
-      - name: Download FFmpeg ${{ env.FFMPEG_VERSION }}
+      - name: Download FFmpeg source
         run: |
           if [ ! -f "ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2" ]; then
             curl -sLO "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2"
@@ -88,8 +85,8 @@ jobs:
           mkdir -p "$OUT_DIR"
 
           tar xjf "ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2"
-          mv "ffmpeg-${{ env.FFMPEG_VERSION }}" "ffmpeg-${{ env.FFMPEG_VERSION }}-plain"
-          cd "ffmpeg-${{ env.FFMPEG_VERSION }}-plain"
+          mv "ffmpeg-${{ env.FFMPEG_VERSION }}" "ffmpeg-plain-src"
+          cd "ffmpeg-plain-src"
 
           ./configure \
             --prefix="$OUT_DIR" \
@@ -126,12 +123,10 @@ jobs:
             --enable-muxers \
             --enable-filters \
             --enable-bsfs \
-            --enable-indevs \
-            --enable-outdevs \
             --enable-network \
-            --enable-ffmpeg \
             --disable-ffprobe \
             --disable-ffplay \
+            --disable-ffmpeg \
             --disable-small \
             --disable-debug \
             --disable-doc \
@@ -148,9 +143,9 @@ jobs:
           NEON_OUT="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/ffmpeg"
           mkdir -p "$NEON_TMP" "$NEON_OUT/lib" "$NEON_OUT/include"
 
-          tar xjf "ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2"
-          mv "ffmpeg-${{ env.FFMPEG_VERSION }}" "ffmpeg-${{ env.FFMPEG_VERSION }}-neon"
-          cd "ffmpeg-${{ env.FFMPEG_VERSION }}-neon"
+          tar xjf "$GITHUB_WORKSPACE/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2"
+          mv "ffmpeg-${{ env.FFMPEG_VERSION }}" "ffmpeg-neon-src"
+          cd "ffmpeg-neon-src"
 
           ./configure \
             --prefix="$NEON_TMP" \
@@ -187,12 +182,10 @@ jobs:
             --enable-muxers \
             --enable-filters \
             --enable-bsfs \
-            --enable-indevs \
-            --enable-outdevs \
             --enable-network \
-            --enable-ffmpeg \
             --disable-ffprobe \
             --disable-ffplay \
+            --disable-ffmpeg \
             --disable-small \
             --disable-debug \
             --disable-doc \
@@ -204,12 +197,12 @@ jobs:
 
           cp -r "$NEON_TMP/include/." "$NEON_OUT/include/"
           for LIB in avcodec avfilter avdevice avformat avutil swresample swscale; do
-            SO=$(ls "$NEON_TMP/lib/lib${LIB}.so" 2>/dev/null || true)
+            SO=$(ls "$NEON_TMP/lib/lib${LIB}.so" 2>/devnull || true)
             if [ -n "$SO" ]; then
               cp "$SO" "$NEON_OUT/lib/lib${LIB}_neon.so"
             fi
             for F in "$NEON_TMP/lib/lib${LIB}".so*; do
-              [ -f "$F" ] && cp -d "$F" "$NEON_OUT/lib/" 2>/dev/null || true
+              [ -f "$F" ] && cp -d "$F" "$NEON_OUT/lib/" 2>/devnull || true
             done
           done
 
@@ -224,7 +217,7 @@ jobs:
 
           "${{ env.CC_ARMV7 }}" \
             -O3 -fPIC \
-            -march=armv7-a -mfloat-abi=softfp -mfpu=neon-vfpv4 \
+            -march=armv7-a -mfpu=neon-vfpv4 \
             -I/tmp/cpufeatures \
             -c /tmp/cpufeatures/cpu-features.c \
             -o /tmp/cpu-features.o
@@ -239,7 +232,9 @@ jobs:
 
       - name: Generate Application.mk and build.mk
         run: |
-          cat > android/jni/Application.mk << 'APPMK'
+          mkdir -p "$GITHUB_WORKSPACE/android/jni"
+          
+          cat > "$GITHUB_WORKSPACE/android/jni/Application.mk" << 'APPMK'
           APP_ABI         := armeabi-v7a
           APP_PLATFORM    := android-24
           APP_STL         := c++_shared
@@ -247,7 +242,7 @@ jobs:
           APP_ARM_MODE    := arm
           APPMK
 
-          cat > android/jni/build.mk << BUILDMK
+          cat > "$GITHUB_WORKSPACE/android/jni/build.mk" << BUILDMK
           ARMV7_BUILD_PATH      := ${{ env.ARMV7_BUILD_PATH }}
           ARMV7_NEON_BUILD_PATH := ${{ env.ARMV7_NEON_BUILD_PATH }}
           ARM64_BUILD_PATH      :=
@@ -261,8 +256,7 @@ jobs:
       - name: Build JNI (ndk-build)
         run: |
           set -e
-          LIBS_DIR="$GITHUB_WORKSPACE/android/libs/armeabi-v7a"
-          mkdir -p "$LIBS_DIR"
+          mkdir -p "$GITHUB_WORKSPACE/android/libs/armeabi-v7a"
 
           $ANDROID_NDK_HOME/ndk-build \
             NDK_PROJECT_PATH="$GITHUB_WORKSPACE/android" \
@@ -283,7 +277,7 @@ jobs:
           PLAIN_LIB="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_BUILD_PATH }}/ffmpeg/lib"
           for SO in "$PLAIN_LIB"/*.so; do
             [ -L "$SO" ] && continue
-            cp "$SO" "$JNI_LIBS/"
+            [ -f "$SO" ] && cp "$SO" "$JNI_LIBS/"
           done
 
           NEON_LIB="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/ffmpeg/lib"
@@ -296,12 +290,12 @@ jobs:
           set -e
           ABI_SO_DIR="$GITHUB_WORKSPACE/dist/jniLibs/armeabi-v7a"
           mkdir -p "$ABI_SO_DIR"
-          cp "$GITHUB_WORKSPACE/android/libs/armeabi-v7a/"*.so "$ABI_SO_DIR/" 2>/dev/null || true
+          cp "$GITHUB_WORKSPACE/android/libs/armeabi-v7a/"*.so "$ABI_SO_DIR/" 2>/devnull || true
 
       - name: Upload native .so libraries
         uses: actions/upload-artifact@v7.0.1
         with:
-          name: ffmpeg-kit-next-9.0.1-android-armeabi-v7a-full-so
+          name: ffmpeg-kit-next-android-armeabi-v7a-full-so
           path: dist/jniLibs/
           retention-days: 30
           if-no-files-found: error
