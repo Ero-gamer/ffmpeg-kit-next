@@ -1,4 +1,5 @@
 name: Build FFmpegKit Next
+
 on:
   push:
     branches: [main, master]
@@ -27,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@v4
         with:
           submodules: true
 
@@ -41,11 +42,13 @@ jobs:
         run: |
           mkdir -p "$ANDROID_SDK_ROOT/licenses"
           printf "893378d70df107b41acc80974419079954e7075a\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a6378b744f05473f20bb4f32402140291\n" > "$ANDROID_SDK_ROOT/licenses/android-sdk-license"
-          echo y | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          printf "33b622e746b0709708655892e8b15801361c4763\n" > "$ANDROID_SDK_ROOT/licenses/android-googletv-license"
+          printf "60100719fe09fc71172fb06a3f372096185d3004\n" > "$ANDROID_SDK_ROOT/licenses/android-googlexr-license"
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Install NDK r27d
+      - name: Install NDK
         run: |
-          echo y | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
       - name: Install build dependencies
@@ -135,7 +138,6 @@ jobs:
           make -j$(nproc)
           make install
 
-          # Dereference symlinks to ensure real .so files exist in target
           cd "$OUT_DIR/lib"
           for LIB in avcodec avfilter avdevice avformat avutil swresample swscale; do
             REAL_SO=$(find . -maxdepth 1 -name "lib${LIB}.so*" -type f | head -n 1)
@@ -205,7 +207,6 @@ jobs:
 
           cp -r "$NEON_TMP/include/." "$NEON_OUT/include/"
           
-          # Force resolution of real physical binaries for NEON targets
           for LIB in avcodec avfilter avdevice avformat avutil swresample swscale; do
             REAL_SO=$(find "$NEON_TMP/lib" -maxdepth 1 -name "lib${LIB}.so*" -type f | head -n 1)
             if [ -n "$REAL_SO" ]; then
@@ -300,7 +301,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/android/libs/armeabi-v7a/"*.so "$ABI_SO_DIR/" 2>/devnull || true
 
       - name: Upload native .so libraries
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v4
         with:
           name: ffmpeg-kit-next-android-armeabi-v7a-full-so
           path: dist/jniLibs/
