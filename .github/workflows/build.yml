@@ -12,10 +12,8 @@ env:
   NDK_VERSION: "27.2.12479018"         # r27d
   ANDROID_API: "24"
   ABI: "armeabi-v7a"
-  # Build directory names used in Android.mk / build.mk
   ARMV7_BUILD_PATH: "android-24-arm-v7a"
   ARMV7_NEON_BUILD_PATH: "android-24-arm-v7a-neon"
-  # Optimization flags (ARMv7-A + NEON/VFPv4, matching build_ffmpeg.sh)
   OPT_CFLAGS: >-
     -O3 -ffast-math -ftree-vectorize
     -mfloat-abi=softfp -mfpu=neon-vfpv4
@@ -31,23 +29,23 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v7.0.1
 
-      # ── 2. Toolchain ─────────────────────────────────────────────────────────
       - name: Set up Java 17
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
 
-      - name: Install Android SDK + NDK r27d
+      - name: Install Android SDK
         uses: android-actions/setup-android@v4.0.1
 
+      # Pipe 'yes' to accept all licenses non-interactively
       - name: Install NDK r27d
         run: |
-          sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
+          yes | sdkmanager --licenses
+          yes | sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
       - name: Install build dependencies
@@ -57,7 +55,6 @@ jobs:
             build-essential nasm yasm pkg-config autoconf automake libtool \
             cmake git curl ca-certificates libssl-dev python3
 
-      # ── 3. Cache FFmpeg source ───────────────────────────────────────────────
       - name: Cache FFmpeg tarball
         uses: actions/cache@v6.1.0
         with:
@@ -70,7 +67,6 @@ jobs:
             curl -sLO "https://ffmpeg.org/releases/ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2"
           fi
 
-      # ── 4. Set toolchain paths ───────────────────────────────────────────────
       - name: Set toolchain environment
         run: |
           HOST_TAG="linux-x86_64"
@@ -81,20 +77,16 @@ jobs:
           echo "CROSS_PREFIX=$TOOLCHAIN/bin/llvm-" >> $GITHUB_ENV
           echo "SYSROOT=$TOOLCHAIN/sysroot" >> $GITHUB_ENV
 
-      # ── 5. Build FFmpeg — plain ARMv7-A (libav*.so) ──────────────────────────
       - name: Build FFmpeg plain ARMv7-A
         run: |
           set -e
           OUT_DIR="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_BUILD_PATH }}/ffmpeg"
           mkdir -p "$OUT_DIR"
 
-          echo "=== Extracting FFmpeg (plain) ==="
-          rm -rf ffmpeg-${{ env.FFMPEG_VERSION }}-plain
           tar xjf "ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2"
           mv "ffmpeg-${{ env.FFMPEG_VERSION }}" "ffmpeg-${{ env.FFMPEG_VERSION }}-plain"
           cd "ffmpeg-${{ env.FFMPEG_VERSION }}-plain"
 
-          echo "=== Configuring FFmpeg plain ARMv7-A ==="
           ./configure \
             --prefix="$OUT_DIR" \
             --target-os=android \
@@ -142,30 +134,20 @@ jobs:
             --extra-cflags="${{ env.OPT_CFLAGS }}" \
             --extra-ldflags="-L$OUT_DIR/lib"
 
-          echo "=== Building FFmpeg plain ARMv7-A ==="
           make -j$(nproc)
           make install
 
-          echo "=== Verifying plain build ==="
-          ls "$OUT_DIR/lib/"*.so
-          ls "$OUT_DIR/include/"
-
-      # ── 6. Build FFmpeg — NEON ARMv7-A (libav*_neon.so) ─────────────────────
       - name: Build FFmpeg NEON ARMv7-A
         run: |
           set -e
-          # Install in a temp prefix, then rename .so → _neon.so for ndk-build
           NEON_TMP="$GITHUB_WORKSPACE/prebuilt/tmp-neon/ffmpeg"
           NEON_OUT="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/ffmpeg"
           mkdir -p "$NEON_TMP" "$NEON_OUT/lib" "$NEON_OUT/include"
 
-          echo "=== Extracting FFmpeg (neon) ==="
-          rm -rf ffmpeg-${{ env.FFMPEG_VERSION }}-neon
           tar xjf "ffmpeg-${{ env.FFMPEG_VERSION }}.tar.bz2"
           mv "ffmpeg-${{ env.FFMPEG_VERSION }}" "ffmpeg-${{ env.FFMPEG_VERSION }}-neon"
           cd "ffmpeg-${{ env.FFMPEG_VERSION }}-neon"
 
-          echo "=== Configuring FFmpeg NEON ARMv7-A ==="
           ./configure \
             --prefix="$NEON_TMP" \
             --target-os=android \
@@ -213,63 +195,45 @@ jobs:
             --extra-cflags="${{ env.NEON_CFLAGS }}" \
             --extra-ldflags="-L$NEON_TMP/lib"
 
-          echo "=== Building FFmpeg NEON ARMv7-A ==="
           make -j$(nproc)
           make install
 
-          echo "=== Renaming to _neon.so suffix ==="
-          # Copy headers (same as plain)
           cp -r "$NEON_TMP/include/." "$NEON_OUT/include/"
-          # Rename each versioned .so to _neon.so (ndk-build prebuilt names)
           for LIB in avcodec avfilter avdevice avformat avutil swresample swscale; do
             SO=$(ls "$NEON_TMP/lib/lib${LIB}.so" 2>/dev/null || true)
             if [ -n "$SO" ]; then
               cp "$SO" "$NEON_OUT/lib/lib${LIB}_neon.so"
             fi
-            # Copy any symlinks / versioned copies too
             for F in "$NEON_TMP/lib/lib${LIB}".so*; do
               [ -f "$F" ] && cp -d "$F" "$NEON_OUT/lib/" 2>/dev/null || true
             done
           done
-          echo "NEON libs:"
-          ls "$NEON_OUT/lib/"
 
-      # ── 7. Build cpu-features (libndk_compat.a) ──────────────────────────────
-      - name: Build cpu-features (libndk_compat.a)
+      - name: Fetch and Build cpu-features (libndk_compat.a)
         run: |
           set -e
           CPU_OUT="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_BUILD_PATH }}/cpu-features"
-          mkdir -p "$CPU_OUT/lib" "$CPU_OUT/include/ndk_compat"
+          mkdir -p "$CPU_OUT/lib" "$CPU_OUT/include/ndk_compat" /tmp/cpufeatures
 
-          # NDK r27 ships ndk_compat sources under sources/android/cpufeatures
-          CPU_SRC="$ANDROID_NDK_HOME/sources/android/cpufeatures"
-          if [ ! -f "$CPU_SRC/cpu-features.c" ]; then
-            echo "ERROR: NDK cpu-features source not found at $CPU_SRC"
-            exit 1
-          fi
+          # Download modern replacement sources from AOSP android/ndk repository
+          curl -sSL "https://android.googlesource.com/platform/ndk/+/refs/heads/main/sources/android/cpufeatures/cpu-features.c?format=TEXT" | base64 -d > /tmp/cpufeatures/cpu-features.c
+          curl -sSL "https://android.googlesource.com/platform/ndk/+/refs/heads/main/sources/android/cpufeatures/cpu-features.h?format=TEXT" | base64 -d > /tmp/cpufeatures/cpu-features.h
 
-          # Compile to static lib via NDK clang (ARMv7-A, API 24)
           "${{ env.CC_ARMV7 }}" \
             -O3 -fPIC \
             -march=armv7-a -mfloat-abi=softfp -mfpu=neon-vfpv4 \
-            -c "$CPU_SRC/cpu-features.c" \
+            -I/tmp/cpufeatures \
+            -c /tmp/cpufeatures/cpu-features.c \
             -o /tmp/cpu-features.o
 
           "${{ env.TOOLCHAIN }}/bin/llvm-ar" rcs "$CPU_OUT/lib/libndk_compat.a" /tmp/cpu-features.o
-          cp "$CPU_SRC/cpu-features.h" "$CPU_OUT/include/ndk_compat/"
+          cp /tmp/cpufeatures/cpu-features.h "$CPU_OUT/include/ndk_compat/"
 
-          echo "cpu-features:"
-          ls "$CPU_OUT/lib/"
-
-          # Also copy to the NEON build path (same static lib, same ABI)
           mkdir -p "$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/cpu-features/lib"
           mkdir -p "$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/cpu-features/include/ndk_compat"
-          cp "$CPU_OUT/lib/libndk_compat.a" \
-             "$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/cpu-features/lib/"
-          cp "$CPU_OUT/include/ndk_compat/cpu-features.h" \
-             "$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/cpu-features/include/ndk_compat/"
+          cp "$CPU_OUT/lib/libndk_compat.a" "$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/cpu-features/lib/"
+          cp /tmp/cpufeatures/cpu-features.h "$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/cpu-features/include/ndk_compat/"
 
-      # ── 8. Generate JNI build files ───────────────────────────────────────────
       - name: Generate Application.mk and build.mk
         run: |
           cat > android/jni/Application.mk << 'APPMK'
@@ -291,7 +255,6 @@ jobs:
           FFMPEG_KIT_PACKAGE_NAME_CFLAG := -DFFMPEGKIT_PACKAGE="full"
           BUILDMK
 
-      # ── 9. Build JNI wrapper via ndk-build ────────────────────────────────────
       - name: Build JNI (ndk-build)
         run: |
           set -e
@@ -309,32 +272,22 @@ jobs:
             ARMV7_NEON=true \
             V=0
 
-          echo "JNI libs:"
-          find "$GITHUB_WORKSPACE/android/libs" -name "*.so"
-
-      # ── 10. Copy all .so into jniLibs for output ──────────────────────────────
       - name: Assemble jniLibs
         run: |
           set -e
           JNI_LIBS="$GITHUB_WORKSPACE/android/libs/armeabi-v7a"
 
-          # Plain FFmpeg .so
           PLAIN_LIB="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_BUILD_PATH }}/ffmpeg/lib"
           for SO in "$PLAIN_LIB"/*.so; do
-            [ -L "$SO" ] && continue   # skip symlinks, keep real files
+            [ -L "$SO" ] && continue
             cp "$SO" "$JNI_LIBS/"
           done
 
-          # Neon FFmpeg _neon.so
           NEON_LIB="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/ffmpeg/lib"
           for SO in "$NEON_LIB"/lib*_neon.so; do
             [ -f "$SO" ] && cp "$SO" "$JNI_LIBS/"
           done
 
-          echo "Final jniLibs:"
-          ls -lh "$JNI_LIBS/"
-
-      # ── 11. Locate & collect artifacts ───────────────────────────────────────
       - name: Collect build artifacts
         run: |
           set -e
@@ -342,10 +295,6 @@ jobs:
           mkdir -p "$ABI_SO_DIR"
           cp "$GITHUB_WORKSPACE/android/libs/armeabi-v7a/"*.so "$ABI_SO_DIR/" 2>/dev/null || true
 
-          echo "=== dist ==="
-          find "$GITHUB_WORKSPACE/dist" -type f | sort
-
-      # ── 12. Upload artifacts ──────────────────────────────────────────────────
       - name: Upload native .so libraries
         uses: actions/upload-artifact@v7.0.1
         with:
