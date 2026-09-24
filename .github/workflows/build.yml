@@ -1,5 +1,4 @@
-name: Build FFmpegKit Next Android armeabi-v7a
-
+name: Build FFmpegKit Next
 on:
   push:
     branches: [main, master]
@@ -136,6 +135,15 @@ jobs:
           make -j$(nproc)
           make install
 
+          # Dereference symlinks to ensure real .so files exist in target
+          cd "$OUT_DIR/lib"
+          for LIB in avcodec avfilter avdevice avformat avutil swresample swscale; do
+            REAL_SO=$(find . -maxdepth 1 -name "lib${LIB}.so*" -type f | head -n 1)
+            if [ -n "$REAL_SO" ]; then
+              cp -f "$REAL_SO" "lib${LIB}.so"
+            fi
+          done
+
       - name: Build FFmpeg NEON ARMv7-A
         run: |
           set -e
@@ -196,14 +204,14 @@ jobs:
           make install
 
           cp -r "$NEON_TMP/include/." "$NEON_OUT/include/"
+          
+          # Force resolution of real physical binaries for NEON targets
           for LIB in avcodec avfilter avdevice avformat avutil swresample swscale; do
-            SO=$(ls "$NEON_TMP/lib/lib${LIB}.so" 2>/devnull || true)
-            if [ -n "$SO" ]; then
-              cp "$SO" "$NEON_OUT/lib/lib${LIB}_neon.so"
+            REAL_SO=$(find "$NEON_TMP/lib" -maxdepth 1 -name "lib${LIB}.so*" -type f | head -n 1)
+            if [ -n "$REAL_SO" ]; then
+              cp -L "$REAL_SO" "$NEON_OUT/lib/lib${LIB}_neon.so"
+              cp -L "$REAL_SO" "$NEON_OUT/lib/lib${LIB}.so"
             fi
-            for F in "$NEON_TMP/lib/lib${LIB}".so*; do
-              [ -f "$F" ] && cp -d "$F" "$NEON_OUT/lib/" 2>/devnull || true
-            done
           done
 
       - name: Fetch and Build cpu-features (libndk_compat.a)
@@ -276,13 +284,12 @@ jobs:
 
           PLAIN_LIB="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_BUILD_PATH }}/ffmpeg/lib"
           for SO in "$PLAIN_LIB"/*.so; do
-            [ -L "$SO" ] && continue
-            [ -f "$SO" ] && cp "$SO" "$JNI_LIBS/"
+            [ -f "$SO" ] && cp -L "$SO" "$JNI_LIBS/"
           done
 
           NEON_LIB="$GITHUB_WORKSPACE/prebuilt/${{ env.ARMV7_NEON_BUILD_PATH }}/ffmpeg/lib"
           for SO in "$NEON_LIB"/lib*_neon.so; do
-            [ -f "$SO" ] && cp "$SO" "$JNI_LIBS/"
+            [ -f "$SO" ] && cp -L "$SO" "$JNI_LIBS/"
           done
 
       - name: Collect build artifacts
